@@ -1,15 +1,23 @@
 from typing import Annotated
 
-from config import settings
+# pyrefly: ignore[missing-import]
 from exceptions import ConflictError, ForbiddenError
-from rate_limit import limiter
-from security import create_access_token, hash_password, verify_password
-from dependencies import CurrentUser, DbSession
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from rate_limit import limiter
+from security import (
+    create_access_token,
+    hash_password,
+    verify_dummy,
+    verify_password,
+)
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+
+from config import settings
+from dependencies import CurrentUser, DbSession
 from models import User, UserStatus
 from schemas.auth import Token, UserCreate, UserOut
-from sqlalchemy import select
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -27,7 +35,11 @@ def register(request: Request, data: UserCreate, db: DbSession):
         role=data.role,
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:  # two simultaneous sign-ups with the same email
+        db.rollback()
+        raise ConflictError("Email already registered") from exc
     db.refresh(user)
     return user
 
@@ -40,13 +52,15 @@ def login(
     db: DbSession,
 ):
     """Use your email as `username`. Works with the Swagger 'Authorize' button."""
-    user = db.scalar(select(User).where(User.email == form.username.lower()))
+    user = db.scalar(select(User).where(User.email == form.username.strip().lower()))
+    if user is None:
+        verify_dummy(form.password)  # same timing whether or not the email exists
     if user is None or not verify_password(form.password, user.hashed_password):
         raise HTTPException(
             401, "Incorrect email or password", headers={"WWW-Authenticate": "Bearer"}
         )
     if user.status != UserStatus.ACTIVE:
-        raise ForbiddenError(f"Your account is {user.status}")
+        raise ForbiddenError(f"Your account is {user.status.value}")
     return Token(access_token=create_access_token(user.id))
 
 

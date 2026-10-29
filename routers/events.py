@@ -4,8 +4,8 @@ from decimal import Decimal
 from fastapi import APIRouter, Query
 from sqlalchemy import func, or_, select
 
+from core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from dependencies import CurrentOrganizer, CurrentUser, DbSession, OptionalUser
-from exceptions import ConflictError, ForbiddenError
 from models import Event, EventStatus, Order, Role, Ticket, TicketStatus
 from schemas.event import EventCreate, EventOut, EventUpdate, SalesOut, TypeSales
 from services.events import get_owned_event, get_visible_event
@@ -25,7 +25,9 @@ def browse_events(
         Event.status == EventStatus.APPROVED, Event.starts_at > datetime.now(UTC)
     )
     if q:
-        stmt = stmt.where(or_(Event.name.ilike(f"%{q}%"), Event.venue.ilike(f"%{q}%")))
+        stmt = stmt.where(
+            or_(Event.name.icontains(q, autoescape=True), Event.venue.icontains(q, autoescape=True))
+        )
     return db.scalars(stmt.order_by(Event.starts_at).offset(skip).limit(limit)).all()
 
 
@@ -58,7 +60,8 @@ def update_event(
     event_id: int, data: EventUpdate, user: CurrentOrganizer, db: DbSession
 ):
     event = get_owned_event(db, event_id, user)
-    for field, value in data.model_dump(exclude_unset=True).items():
+    # exclude_none: a client sending {"name": null} must not wipe a NOT NULL column (was a 500)
+    for field, value in data.model_dump(exclude_unset=True, exclude_none=True).items():
         setattr(event, field, value)
     db.commit()
     db.refresh(event)
@@ -78,7 +81,9 @@ def delete_event(event_id: int, user: CurrentOrganizer, db: DbSession):
 def event_sales(event_id: int, user: CurrentUser, db: DbSession):
     """How many tickets have I sold? (organizer who owns the event, or an admin)"""
     event = db.get(Event, event_id)
-    if event is None or (user.role != Role.ADMIN and event.organizer_id != user.id):
+    if event is None:
+        raise NotFoundError("Event not found")
+    if user.role != Role.ADMIN and event.organizer_id != user.id:
         raise ForbiddenError("You do not own this event")
 
     rows = db.execute(

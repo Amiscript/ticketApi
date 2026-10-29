@@ -1,15 +1,15 @@
-from config import settings
-from exceptions import ConflictError, NotFoundError
-from rate_limit import limiter
-from dependencies import CurrentUser, DbSession
 from fastapi import APIRouter, BackgroundTasks, Request, Response
-from services.email import send_ticket_email
-from services.orders import orders as order_service
-from services.qr import generate_qr_png
 from sqlalchemy import select
 
-from models import Order, Ticket, TicketStatus
+from core.config import settings
+from core.exceptions import ConflictError, NotFoundError
+from core.rate_limit import limiter
+from dependencies import CurrentUser, DbSession
+from models import Order, Role, Ticket, TicketStatus
 from schemas.order import ConfirmPayment, OrderCreate, OrderOut, PaymentInit
+from services import orders as order_service
+from services.email import send_ticket_email
+from services.qr import generate_qr_png
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 tickets_router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -76,7 +76,7 @@ def cancel(order_id: int, user: CurrentUser, db: DbSession):
 def ticket_qr(ticket_id: int, user: CurrentUser, db: DbSession):
     """PNG QR code for a confirmed ticket you own."""
     ticket = db.get(Ticket, ticket_id)
-    if ticket is None or (ticket.order.user_id != user.id and user.role != "admin"):
+    if ticket is None or (ticket.order.user_id != user.id and user.role != Role.ADMIN):
         raise NotFoundError("Ticket not found")
     if ticket.status != TicketStatus.CONFIRMED:
         raise ConflictError("QR codes are only available for confirmed tickets")

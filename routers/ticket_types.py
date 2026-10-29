@@ -1,19 +1,21 @@
-from asyncio import selector_events
-from psycopg import IntegrityError
-from exceptions import BadRequestError, ConflictError, NotFoundError
-from dependencies import CurrentOrganizer, DbSession, OptionalUser
+# pyrefly: ignore[missing-import]
+from core.exceptions import BadRequestError, ConflictError, NotFoundError
 from fastapi import APIRouter
-from models import Ticket, TicketType
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+
+from dependencies import CurrentOrganizer, DbSession, OptionalUser
+from models import Seat, Ticket, TicketType
 from schemas.event import TicketTypeCreate, TicketTypeOut, TicketTypeUpdate
 from services.events import get_owned_event, get_visible_event
-from services.orders import release_expired_reservations, sold_count
+from services.orders import release_expired_reservations, sold_count, sold_counts
 
 router = APIRouter(prefix="/events/{event_id}/ticket-types", tags=["Ticket Types"])
 
 
-def _with_availability(db, tt: TicketType) -> TicketTypeOut:
+def _with_availability(tt: TicketType, sold: int) -> TicketTypeOut:
     out = TicketTypeOut.model_validate(tt)
-    out.available = max(tt.quantity - sold_count(db, tt.id), 0)
+    out.available = max(tt.quantity - sold, 0)
     return out
 
 
@@ -47,14 +49,15 @@ def create_ticket_type(
             f"A ticket type named '{data.name}' already exists"
         ) from exc
     db.refresh(tt)
-    return _with_availability(db, tt)
+    return _with_availability(tt, 0)
 
 
 @router.get("", response_model=list[TicketTypeOut])
 def list_ticket_types(event_id: int, db: DbSession, user: OptionalUser):
-    release_expired_reservations(db)
     event = get_visible_event(db, event_id, user)
-    return [_with_availability(db, tt) for tt in event.ticket_types]
+    release_expired_reservations(db)
+    sold = sold_counts(db, event.id)  # one query instead of one per ticket type
+    return [_with_availability(tt, sold.get(tt.id, 0)) for tt in event.ticket_types]
 
 
 @router.patch("/{ticket_type_id}", response_model=TicketTypeOut)
@@ -67,7 +70,7 @@ def update_ticket_type(
 ):
     event = get_owned_event(db, event_id, user)
     tt = _get_type(db, event.id, ticket_type_id)
-    changes = data.model_dump(exclude_unset=True)
+    changes = data.model_dump(exclude_unset=True, exclude_none=True)
     if "quantity" in changes:
         if event.is_seated:
             raise BadRequestError(
@@ -84,7 +87,7 @@ def update_ticket_type(
     except IntegrityError as exc:
         db.rollback()
         raise ConflictError("Another ticket type already uses that name") from exc
-    return _with_availability(db, tt)
+    return _with_availability(tt, sold_count(db, tt.id))
 
 
 @router.delete("/{ticket_type_id}", status_code=204)
@@ -95,5 +98,7 @@ def delete_ticket_type(
     tt = _get_type(db, event.id, ticket_type_id)
     if db.scalar(select(Ticket.id).where(Ticket.ticket_type_id == tt.id).limit(1)):
         raise ConflictError("Tickets of this type were already sold or reserved")
+    if db.scalar(select(Seat.id).where(Seat.ticket_type_id == tt.id).limit(1)):
+        raise ConflictError("Seats are assigned to this ticket type")
     db.delete(tt)
     db.commit()

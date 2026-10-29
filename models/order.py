@@ -1,14 +1,13 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Optional
 from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from models import Seat
 from models.base import Base, TimestampMixin, enum_column
+from models.event import Seat
 
 
 class OrderStatus(StrEnum):
@@ -61,6 +60,9 @@ class Ticket(TimestampMixin, Base):
             postgresql_where=text(
                 "seat_id IS NOT NULL AND status IN ('reserved', 'confirmed')"
             ),
+            sqlite_where=text(
+                "seat_id IS NOT NULL AND status IN ('reserved', 'confirmed')"
+            ),
         ),
     )
 
@@ -80,4 +82,4 @@ class Ticket(TimestampMixin, Base):
     )
 
     order: Mapped[Order] = relationship(back_populates="tickets")
-    seat: Mapped[Optional["Seat"]] = relationship("Seat", lazy="selectin")
+    seat: Mapped[Seat | None] = relationship(lazy="selectin")

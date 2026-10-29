@@ -2,8 +2,8 @@ import getpass
 
 from sqlalchemy import select
 
-from database import SessionLocal
-from security import hash_password
+from core.database import SessionLocal
+from core.security import hash_password
 from models import Role, User, UserStatus
 
 

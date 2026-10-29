@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -9,9 +10,10 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from core.config import settings
-from core.database import SessionLocal
+from core.database import SessionLocal, engine
 from core.exceptions import TicketFlowError
 from core.rate_limit import limiter
+from models import Base
 from routers import admin, auth, events, orders, seats, ticket_types
 from services.orders import release_expired_reservations
 
@@ -27,7 +29,7 @@ def _release_expired() -> None:
 
 
 async def _expiry_loop() -> None:
-
+    """Free seats/tickets held by unpaid orders. Also swept lazily on reads, so this is a backstop."""
     while True:
         try:
             await asyncio.to_thread(_release_expired)
@@ -38,10 +40,16 @@ async def _expiry_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.auto_create_tables:
+        Base.metadata.create_all(engine)
     task = asyncio.create_task(_expiry_loop()) if settings.run_expiry_task else None
-    yield
-    if task:
-        task.cancel()
+    try:
+        yield
+    finally:
+        if task:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 app = FastAPI(

@@ -79,7 +79,7 @@ class Seat(Base):
         ForeignKey("events.id", ondelete="CASCADE"), index=True
     )
     ticket_type_id: Mapped[int] = mapped_column(
-        ForeignKey("ticket_types.id"), index=True
+        ForeignKey("ticket_types.id", ondelete="CASCADE"), index=True
     )
     section: Mapped[str] = mapped_column(String(40))
     row: Mapped[str] = mapped_column(String(10))

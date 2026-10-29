@@ -4,9 +4,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
-from database import get_db
-from exceptions import ForbiddenError
-from security import decode_access_token
+from core.database import get_db
+from core.exceptions import ForbiddenError
+from core.security import decode_access_token
 from models import Role, User, UserStatus
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -25,7 +25,7 @@ def _load_user(db: Session, token: str) -> User:
             headers={"WWW-Authenticate": "Bearer"},
         )
     if user.status != UserStatus.ACTIVE:
-        raise ForbiddenError(f"Your account is {user.status}")
+        raise ForbiddenError(f"Your account is {user.status.value}")
     return user
 
 

@@ -1,13 +1,13 @@
-from models import ACTIVE_TICKET_STATUSES
-from exceptions import BadRequestError, ConflictError, NotFoundError
-from dependencies import CurrentOrganizer, DbSession, OptionalUser
 from fastapi import APIRouter, Query
-from models import Seat, Ticket, TicketType
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+
+from core.exceptions import BadRequestError, ConflictError, NotFoundError
+from dependencies import CurrentOrganizer, DbSession, OptionalUser
+from models import ACTIVE_TICKET_STATUSES, Seat, Ticket, TicketType
 from schemas.event import SeatGenerate, SeatOut
 from services.events import get_owned_event, get_visible_event
 from services.orders import release_expired_reservations
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 
 
 router = APIRouter(prefix="/events/{event_id}/seats", tags=["Seats"])
@@ -57,8 +57,8 @@ def seat_map(
     ticket_type_id: int | None = Query(None),
 ):
     """The 'seat map': every seat with `available` or `taken` status."""
-    release_expired_reservations(db)
     get_visible_event(db, event_id, user)
+    release_expired_reservations(db)
 
     taken = set(
         db.scalars(
