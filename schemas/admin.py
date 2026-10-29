@@ -15,7 +15,7 @@ class ReasonIn(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
 
 
-class RefundIn(BaseModel):
+class CancelIn(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
@@ -35,21 +35,21 @@ class DashboardOut(BaseModel):
     total_users: int
     users_by_role: dict[str, int]
     events_by_status: dict[str, int]
-    paid_orders: int
-    gross_revenue: Decimal
+    confirmed_orders: int
+    total_value: Decimal
 
 
 class EventSales(BaseModel):
     event_id: int
     name: str
     orders: int
-    revenue: Decimal
+    total_value: Decimal
 
 
 class SalesReport(BaseModel):
-    paid_orders: int
-    tickets_sold: int
-    gross_revenue: Decimal
-    refunded_orders: int
-    refunded_amount: Decimal
+    confirmed_orders: int
+    tickets_booked: int
+    total_value: Decimal
+    cancelled_orders: int
+    cancelled_value: Decimal
     top_events: list[EventSales]

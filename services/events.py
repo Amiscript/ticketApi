@@ -5,7 +5,7 @@ from models import Event, EventStatus, Role, User
 
 
 def get_owned_event(db: Session, event_id: int, user: User) -> Event:
-    """Event the user may modify: its organizer (admins moderate via /admin instead)."""
+
     event = db.get(Event, event_id)
     if event is None:
         raise NotFoundError("Event not found")
@@ -15,10 +15,7 @@ def get_owned_event(db: Session, event_id: int, user: User) -> Event:
 
 
 def get_visible_event(db: Session, event_id: int, user: User | None) -> Event:
-    """Approved events are public. Anything else is only visible to its owner or an admin.
 
-    Hidden events return 404 (not 403) so their existence is not leaked.
-    """
     event = db.get(Event, event_id)
     if event is None:
         raise NotFoundError("Event not found")

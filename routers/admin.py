@@ -3,11 +3,11 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy import func, select
 
-from exceptions import BadRequestError, ConflictError, NotFoundError
+from core.exceptions import BadRequestError, ConflictError, NotFoundError
 from dependencies import CurrentAdmin, DbSession, require_roles
 from services.audit import log_action
-from services.email import send_refund_email
-from services.orders import refund_order
+from services.email import send_cancellation_email
+from services.orders import admin_cancel_order
 from models import (
     AuditLog,
     Event,
@@ -22,10 +22,10 @@ from models import (
 )
 from schemas.admin import (
     AuditLogOut,
+    CancelIn,
     DashboardOut,
     EventSales,
     ReasonIn,
-    RefundIn,
     SalesReport,
     UserStatusUpdate,
 )
@@ -54,17 +54,17 @@ def dashboard(db: DbSession):
             select(Event.status, func.count(Event.id)).group_by(Event.status)
         )
     }
-    paid_orders, revenue = db.execute(
+    confirmed_orders, total_value = db.execute(
         select(
             func.count(Order.id), func.coalesce(func.sum(Order.total_amount), 0)
-        ).where(Order.status == OrderStatus.PAID)
+        ).where(Order.status == OrderStatus.CONFIRMED)
     ).one()
     return DashboardOut(
         total_users=sum(users_by_role.values()),
         users_by_role=users_by_role,
         events_by_status=events_by_status,
-        paid_orders=paid_orders,
-        gross_revenue=revenue,
+        confirmed_orders=confirmed_orders,
+        total_value=total_value,
     )
 
 
@@ -94,9 +94,9 @@ def sales_report(
             )
         ).one()
 
-    paid_count, gross = totals(OrderStatus.PAID)
-    refunded_count, refunded_amount = totals(OrderStatus.REFUNDED)
-    tickets_sold = db.scalar(
+    confirmed_count, total_value = totals(OrderStatus.CONFIRMED)
+    cancelled_count, cancelled_value = totals(OrderStatus.CANCELLED)
+    tickets_booked = db.scalar(
         window(
             select(func.count(Ticket.id))
             .join(Order, Order.id == Ticket.order_id)
@@ -109,7 +109,7 @@ def sales_report(
                 Event.id, Event.name, func.count(Order.id), func.sum(Order.total_amount)
             )
             .join(Order, Order.event_id == Event.id)
-            .where(Order.status == OrderStatus.PAID)
+            .where(Order.status == OrderStatus.CONFIRMED)
         )
         .group_by(Event.id, Event.name)
         .order_by(func.sum(Order.total_amount).desc())
@@ -117,13 +117,13 @@ def sales_report(
     ).all()
 
     return SalesReport(
-        paid_orders=paid_count,
-        tickets_sold=tickets_sold or 0,
-        gross_revenue=gross,
-        refunded_orders=refunded_count,
-        refunded_amount=refunded_amount,
+        confirmed_orders=confirmed_count,
+        tickets_booked=tickets_booked or 0,
+        total_value=total_value,
+        cancelled_orders=cancelled_count,
+        cancelled_value=cancelled_value,
         top_events=[
-            EventSales(event_id=i, name=n, orders=c, revenue=r) for i, n, c, r in top
+            EventSales(event_id=i, name=n, orders=c, total_value=r) for i, n, c, r in top
         ],
     )
 
@@ -248,27 +248,21 @@ def suspend_event(event_id: int, data: ReasonIn, admin: CurrentAdmin, db: DbSess
     )
 
 
-# ---------------------------------------------------------------- refunds
-@router.post("/orders/{order_id}/refund", response_model=OrderOut)
-def refund(
+# ---------------------------------------------------------------- order cancellation
+@router.post("/orders/{order_id}/cancel", response_model=OrderOut)
+def cancel_order(
     order_id: int,
-    data: RefundIn,
+    data: CancelIn,
     background_tasks: BackgroundTasks,
     admin: CurrentAdmin,
     db: DbSession,
 ):
-    order = refund_order(db, order_id)
-    log_action(
-        db,
-        admin,
-        "order.refund",
-        "order",
-        order.id,
-        {"amount": str(order.total_amount), "reason": data.reason},
-    )
+    """Cancel any customer's order (frees the tickets/seats and emails the customer)."""
+    order = admin_cancel_order(db, order_id)
+    log_action(db, admin, "order.cancel", "order", order.id, {"reason": data.reason})
     db.commit()
     db.refresh(order)
-    background_tasks.add_task(send_refund_email, order.id)
+    background_tasks.add_task(send_cancellation_email, order.id)
     return order
 
 

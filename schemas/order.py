@@ -13,8 +13,8 @@ class OrderItem(BaseModel):
 
 class OrderCreate(BaseModel):
     event_id: int
-    items: list[OrderItem] = Field(default_factory=list)  # general admission
-    seat_ids: list[int] = Field(default_factory=list)  # seated events
+    items: list[OrderItem] = Field(default_factory=list)
+    seat_ids: list[int] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def exactly_one_mode(self):
@@ -52,18 +52,5 @@ class OrderOut(BaseModel):
     event_id: int
     status: OrderStatus
     total_amount: Decimal
-    expires_at: datetime
-    payment_reference: str | None
     created_at: datetime
     tickets: list[TicketOut]
-
-
-class PaymentInit(BaseModel):
-    reference: str
-    authorization_url: str
-    amount: Decimal
-    currency: str
-
-
-class ConfirmPayment(BaseModel):
-    reference: str

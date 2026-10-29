@@ -23,35 +23,30 @@ def make_approved_event(client, seated=False):
     return ev, org, admin
 
 
-def test_general_admission_full_flow(client):
+def test_general_admission_booking_flow(client):
     ev, org, admin = make_approved_event(client)
     tt = client.post(f"/events/{ev['id']}/ticket-types", headers=org, json={"name": "Regular", "price": "5000", "quantity": 2}).json()
     buyer = register_and_login(client, "buyer@x.com")
 
     order = client.post("/orders", headers=buyer, json={"event_id": ev["id"], "items": [{"ticket_type_id": tt["id"], "quantity": 2}]})
     assert order.status_code == 201, order.text
-    assert order.json()["total_amount"] == "10000.00"
+    body = order.json()
+    assert body["status"] == "confirmed" and body["total_amount"] == "10000.00"
+    assert all(t["status"] == "confirmed" for t in body["tickets"])
 
     # sold out now
     again = client.post("/orders", headers=buyer, json={"event_id": ev["id"], "items": [{"ticket_type_id": tt["id"], "quantity": 1}]})
     assert again.status_code == 409
 
-    oid = order.json()["id"]
-    ref = client.post(f"/orders/{oid}/pay", headers=buyer).json()["reference"]
-    assert client.post(f"/orders/{oid}/confirm", headers=buyer, json={"reference": "wrong"}).status_code == 400
-    paid = client.post(f"/orders/{oid}/confirm", headers=buyer, json={"reference": ref})
-    assert paid.status_code == 200 and paid.json()["status"] == "paid"
-    # idempotent
-    assert client.post(f"/orders/{oid}/confirm", headers=buyer, json={"reference": ref}).status_code == 200
-
-    tid = paid.json()["tickets"][0]["id"]
+    tid = body["tickets"][0]["id"]
     qr = client.get(f"/tickets/{tid}/qr", headers=buyer)
     assert qr.status_code == 200 and qr.content.startswith(b"\x89PNG")
 
-    refund = client.post(f"/admin/orders/{oid}/refund", headers=admin, json={"reason": "test"})
-    assert refund.status_code == 200 and refund.json()["status"] == "refunded"
-    types = client.get(f"/events/{ev['id']}/ticket-types").json()
-    assert types[0]["available"] == 2  # inventory returned
+    # admin cancels -> inventory returns, QR no longer valid
+    cancelled = client.post(f"/admin/orders/{body['id']}/cancel", headers=admin, json={"reason": "test"})
+    assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
+    assert client.get(f"/events/{ev['id']}/ticket-types").json()[0]["available"] == 2
+    assert client.get(f"/tickets/{tid}/qr", headers=buyer).status_code == 409
 
 
 def test_seat_cannot_be_double_booked(client):
@@ -65,12 +60,15 @@ def test_seat_cannot_be_double_booked(client):
     assert client.post("/orders", headers=b, json={"event_id": ev["id"], "seat_ids": [seat_id]}).status_code == 409
 
 
-def test_cancel_releases_inventory(client):
+def test_customer_cancel_releases_inventory(client):
     ev, org, _ = make_approved_event(client)
     tt = client.post(f"/events/{ev['id']}/ticket-types", headers=org, json={"name": "Regular", "price": "1", "quantity": 1}).json()
     buyer = register_and_login(client, "buyer@x.com")
+    other = register_and_login(client, "other@x.com")
     oid = client.post("/orders", headers=buyer, json={"event_id": ev["id"], "items": [{"ticket_type_id": tt["id"], "quantity": 1}]}).json()["id"]
+    assert client.post(f"/orders/{oid}/cancel", headers=other).status_code == 404  # not yours
     assert client.post(f"/orders/{oid}/cancel", headers=buyer).json()["status"] == "cancelled"
+    assert client.post(f"/orders/{oid}/cancel", headers=buyer).status_code == 409  # already cancelled
     assert client.get(f"/events/{ev['id']}/ticket-types").json()[0]["available"] == 1
 
 

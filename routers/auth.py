@@ -1,20 +1,19 @@
 from typing import Annotated
 
-# pyrefly: ignore[missing-import]
-from exceptions import ConflictError, ForbiddenError
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
-from rate_limit import limiter
-from security import (
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+
+from core.config import settings
+from core.exceptions import ConflictError, ForbiddenError
+from core.rate_limit import limiter
+from core.security import (
     create_access_token,
     hash_password,
     verify_dummy,
     verify_password,
 )
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-
-from config import settings
 from dependencies import CurrentUser, DbSession
 from models import User, UserStatus
 from schemas.auth import Token, UserCreate, UserOut

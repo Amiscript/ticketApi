@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     app_name: str = "TicketFlow"
     debug: bool = False
 
-    database_url: str = "postgresql+psycopg://ticketflow:ticketflow@localhost:5432/ticketflow"
+    database_url: str = (
+        "postgresql+psycopg://ticketflow:ticketflow@localhost:5432/ticketflow"
+    )
 
     secret_key: str = "change-me"
     algorithm: str = "HS256"
@@ -30,10 +32,6 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = "tickets@ticketflow.local"
-
-    payment_provider: str = "mock"  # "mock" or "paystack"
-    paystack_secret_key: str = ""
-    currency: str = "NGN"
 
 
 @lru_cache

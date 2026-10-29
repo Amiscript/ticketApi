@@ -9,7 +9,6 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=2, max_length=120)
-    # Admins can't self-register; they're created with scripts/create_admin.py
     role: Role = Role.CUSTOMER
 
     @field_validator("role")

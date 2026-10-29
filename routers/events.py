@@ -20,13 +20,16 @@ def browse_events(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
 ):
-    """Public: upcoming, approved events."""
+
     stmt = select(Event).where(
         Event.status == EventStatus.APPROVED, Event.starts_at > datetime.now(UTC)
     )
     if q:
         stmt = stmt.where(
-            or_(Event.name.icontains(q, autoescape=True), Event.venue.icontains(q, autoescape=True))
+            or_(
+                Event.name.icontains(q, autoescape=True),
+                Event.venue.icontains(q, autoescape=True),
+            )
         )
     return db.scalars(stmt.order_by(Event.starts_at).offset(skip).limit(limit)).all()
 
@@ -79,7 +82,7 @@ def delete_event(event_id: int, user: CurrentOrganizer, db: DbSession):
 
 @router.get("/{event_id}/sales", response_model=SalesOut)
 def event_sales(event_id: int, user: CurrentUser, db: DbSession):
-    """How many tickets have I sold? (organizer who owns the event, or an admin)"""
+    """How many tickets are booked? (organizer who owns the event, or an admin)"""
     event = db.get(Event, event_id)
     if event is None:
         raise NotFoundError("Event not found")
@@ -102,14 +105,14 @@ def event_sales(event_id: int, user: CurrentUser, db: DbSession):
             ticket_type_id=tt.id,
             name=tt.name,
             capacity=tt.quantity,
-            sold=sales.get(tt.id, (0, Decimal(0)))[0],
-            revenue=sales.get(tt.id, (0, Decimal(0)))[1],
+            booked=sales.get(tt.id, (0, Decimal(0)))[0],
+            value=sales.get(tt.id, (0, Decimal(0)))[1],
         )
         for tt in event.ticket_types
     ]
     return SalesOut(
         event_id=event_id,
-        total_sold=sum(t.sold for t in by_type),
-        total_revenue=sum((t.revenue for t in by_type), Decimal(0)),
+        total_booked=sum(t.booked for t in by_type),
+        total_value=sum((t.value for t in by_type), Decimal(0)),
         by_ticket_type=by_type,
     )

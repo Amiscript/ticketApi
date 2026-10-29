@@ -4,9 +4,7 @@ os.environ.update(
     DEBUG="true",
     SECRET_KEY="test-secret-key-test-secret-key-1234",
     DATABASE_URL="sqlite:///./test.db",
-    RUN_EXPIRY_TASK="false",
     RATE_LIMIT_ENABLED="false",
-    PAYMENT_PROVIDER="mock",
 )
 
 import pytest

@@ -16,7 +16,6 @@ def _validate_start(value: datetime | None) -> datetime | None:
     return value
 
 
-# ---- ticket types ----
 class TicketTypeCreate(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
@@ -37,10 +36,9 @@ class TicketTypeOut(BaseModel):
     name: str
     price: Decimal
     quantity: int
-    available: int | None = None  # filled in by the ticket-types endpoint
+    available: int | None = None
 
 
-# ---- events ----
 class EventCreate(BaseModel):
     name: str = Field(min_length=3, max_length=150)
     description: str = Field(default="", max_length=5000)
@@ -85,18 +83,17 @@ class TypeSales(BaseModel):
     ticket_type_id: int
     name: str
     capacity: int
-    sold: int
-    revenue: Decimal
+    booked: int
+    value: Decimal
 
 
 class SalesOut(BaseModel):
     event_id: int
-    total_sold: int
-    total_revenue: Decimal
+    total_booked: int
+    total_value: Decimal
     by_ticket_type: list[TypeSales]
 
 
-# ---- seats ----
 class SeatGenerate(BaseModel):
     ticket_type_id: int
     section: str = Field(min_length=1, max_length=40)
@@ -110,4 +107,4 @@ class SeatOut(BaseModel):
     row: str
     number: int
     ticket_type_id: int
-    status: str  # "available" | "taken"
+    status: str

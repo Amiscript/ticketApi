@@ -1,6 +1,6 @@
 # TicketFlow API
 
-FastAPI + SQLAlchemy 2 + PostgreSQL ticketing backend.
+FastAPI + SQLAlchemy 2 + PostgreSQL event-ticketing backend (no payments: bookings confirm instantly).
 
 ## Run
 
@@ -15,8 +15,15 @@ uvicorn main:app --reload
 
 Docs at http://localhost:8000/docs. Run tests with `pytest` (uses SQLite).
 
+## Flow
+1. Organizer creates an event, ticket types (and seats for seated events). Admin approves it.
+2. Customer `POST /orders` with `items` (general admission) or `seat_ids` (seated). Tickets are confirmed
+   immediately and emailed as QR codes. `GET /tickets/{id}/qr` returns the QR PNG.
+3. Customer can `POST /orders/{id}/cancel` until the event starts; admins can cancel any order via
+   `POST /admin/orders/{id}/cancel`. Cancelled tickets/seats go back on sale.
+
 ## Production notes
-- `DEBUG=false` requires a real `SECRET_KEY` (>=32 chars) and `PAYMENT_PROVIDER=paystack`.
+- `DEBUG=false` requires a real `SECRET_KEY` (>=32 chars).
 - Use Alembic migrations instead of `create_all`.
 - Rate limiting uses in-memory storage by default; set `RATE_LIMIT_STORAGE_URI=redis://...` with multiple workers.
-- With several workers the expiry loop runs in each; harmless (row locks use SKIP LOCKED) but set `RUN_EXPIRY_TASK=false` on all but one if you prefer.
+- Prices are informational only (stored on tickets/orders, no money is processed).

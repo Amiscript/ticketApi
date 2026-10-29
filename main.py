@@ -1,5 +1,3 @@
-import asyncio
-import contextlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -10,52 +8,27 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from core.config import settings
-from core.database import SessionLocal, engine
+from core.database import engine
 from core.exceptions import TicketFlowError
 from core.rate_limit import limiter
 from models import Base
 from routers import admin, auth, events, orders, seats, ticket_types
-from services.orders import release_expired_reservations
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ticketflow")
-
-
-def _release_expired() -> None:
-    with SessionLocal() as db:
-        count = release_expired_reservations(db)
-        if count:
-            logger.info("Released %d expired reservation(s)", count)
-
-
-async def _expiry_loop() -> None:
-    """Free seats/tickets held by unpaid orders. Also swept lazily on reads, so this is a backstop."""
-    while True:
-        try:
-            await asyncio.to_thread(_release_expired)
-        except Exception:
-            logger.exception("Expiry job failed")
-        await asyncio.sleep(60)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.auto_create_tables:
         Base.metadata.create_all(engine)
-    task = asyncio.create_task(_expiry_loop()) if settings.run_expiry_task else None
-    try:
-        yield
-    finally:
-        if task:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+    yield
 
 
 app = FastAPI(
     title=settings.app_name,
     version="1.0.0",
-    description="Event ticketing API: events, ticket inventory, seat selection, purchases, admin.",
+    description="Event ticketing API: events, ticket inventory, seat selection, bookings, admin.",
     lifespan=lifespan,
     debug=settings.debug,
 )
